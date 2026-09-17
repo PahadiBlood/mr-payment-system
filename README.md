@@ -1,5 +1,12 @@
 # Payment Gateway — Project Approach & Design Notes
 
+## MR Bank Access URLs
+
+- Project base URL: `http://localhost:8000`
+- Public auth base URL: `http://localhost:8000/api/v1/public/auth`
+- Swagger UI: `http://localhost:8000/swagger-ui/index.html`
+- OpenAPI docs JSON: `http://localhost:8000/v3/api-docs`
+
 ## Why This Project
 
 The real motivation is to get hands-on with the parts of backend engineering that are hard to fake: **atomicity, concurrency, and service-to-service reliability**. Payment systems force you to deal with these properly — money can't be lost, duplicated, or left in an inconsistent state. That's a better story for interviews than "I wanted a job at this company," even if that's part of the honest motivation too. It's fine to mention interest in fintech companies (e.g. Paytm) as a bonus, framed as genuine interest in the domain — not as the headline reason.
