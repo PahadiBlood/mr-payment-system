@@ -1,0 +1,19 @@
+server:
+  port: 8000
+
+
+spring:
+  application:
+    name: mrbank
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mrbank
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
