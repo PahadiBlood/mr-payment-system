@@ -11,6 +11,11 @@ spring:
     username: postgres
     password: postgres
     driver-class-name: org.postgresql.Driver
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2s
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
