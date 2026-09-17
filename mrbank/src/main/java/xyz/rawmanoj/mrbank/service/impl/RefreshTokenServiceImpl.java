@@ -8,7 +8,6 @@ import xyz.rawmanoj.mrbank.entity.RefreshToken;
 import xyz.rawmanoj.mrbank.entity.User;
 import xyz.rawmanoj.mrbank.exception.UnauthorizedException;
 import xyz.rawmanoj.mrbank.repository.RefreshTokenRepository;
-import xyz.rawmanoj.mrbank.service.RefreshTokenService;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -18,11 +17,10 @@ import java.util.HexFormat;
 
 @Service
 @RequiredArgsConstructor
-public class RefreshTokenServiceImpl implements RefreshTokenService {
+public class RefreshTokenServiceImpl {
     private final RefreshTokenRepository refreshTokenRepository;
     private final JwtProperties jwtProperties;
 
-    @Override
     @Transactional
     public RefreshToken createRefreshToken(User user, String refreshToken) {
         RefreshToken token = new RefreshToken();
@@ -33,7 +31,6 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         return refreshTokenRepository.save(token);
     }
 
-    @Override
     public RefreshToken verifyRefreshToken(String refreshToken) {
         RefreshToken token = refreshTokenRepository.findByTokenHash(hashToken(refreshToken))
                 .orElseThrow(() -> new UnauthorizedException("Invalid refresh token"));
@@ -45,7 +42,6 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         return token;
     }
 
-    @Override
     @Transactional
     public void revokeRefreshToken(String refreshToken) {
         refreshTokenRepository.findByTokenHash(hashToken(refreshToken))
@@ -55,13 +51,11 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
                 });
     }
 
-    @Override
     @Transactional
     public void revokeAllUserRefreshTokens(User user) {
         refreshTokenRepository.deleteByUser(user);
     }
 
-    @Override
     public String hashToken(String refreshToken) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

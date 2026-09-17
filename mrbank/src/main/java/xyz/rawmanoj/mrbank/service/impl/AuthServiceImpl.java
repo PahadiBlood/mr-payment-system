@@ -11,27 +11,21 @@ import xyz.rawmanoj.mrbank.dto.response.MessageResponse;
 import xyz.rawmanoj.mrbank.entity.RefreshToken;
 import xyz.rawmanoj.mrbank.entity.User;
 import xyz.rawmanoj.mrbank.exception.UnauthorizedException;
-import xyz.rawmanoj.mrbank.service.AuthService;
-import xyz.rawmanoj.mrbank.service.JwtTokenService;
-import xyz.rawmanoj.mrbank.service.RefreshTokenService;
 
 @Service
 @RequiredArgsConstructor
-public class AuthServiceImpl implements AuthService {
-    private final JwtTokenService jwtTokenService;
-    private final RefreshTokenService refreshTokenService;
+public class AuthServiceImpl {
+    private final JwtTokenServiceImpl jwtTokenService;
+    private final RefreshTokenServiceImpl refreshTokenService;
 
-    @Override
     public MessageResponse register(RegisterRequest request) {
         throw new UnsupportedOperationException("Register logic is not implemented yet");
     }
 
-    @Override
     public AuthResponse login(LoginRequest request) {
         throw new UnsupportedOperationException("Login logic is not implemented yet");
     }
 
-    @Override
     public AuthResponse refreshToken(TokenRefreshRequest request) {
         RefreshToken refreshToken = refreshTokenService.verifyRefreshToken(request.refreshToken());
         User user = refreshToken.getUser();
@@ -44,7 +38,6 @@ public class AuthServiceImpl implements AuthService {
         return new AuthResponse(accessToken, request.refreshToken());
     }
 
-    @Override
     public MessageResponse logout(LogoutRequest request) {
         refreshTokenService.revokeRefreshToken(request.refreshToken());
         return new MessageResponse("Logged out successfully");

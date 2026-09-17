@@ -7,7 +7,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import xyz.rawmanoj.mrbank.config.JwtProperties;
 import xyz.rawmanoj.mrbank.entity.User;
-import xyz.rawmanoj.mrbank.service.JwtTokenService;
 
 import javax.crypto.SecretKey;
 import java.security.SecureRandom;
@@ -18,12 +17,11 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
-public class JwtTokenServiceImpl implements JwtTokenService {
+public class JwtTokenServiceImpl {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final JwtProperties jwtProperties;
 
-    @Override
     public String generateAccessToken(User user) {
         Instant now = Instant.now();
 
@@ -36,14 +34,12 @@ public class JwtTokenServiceImpl implements JwtTokenService {
                 .compact();
     }
 
-    @Override
     public String generateRefreshTokenValue() {
         byte[] randomBytes = new byte[64];
         SECURE_RANDOM.nextBytes(randomBytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
     }
 
-    @Override
     public String extractSubject(String token) {
         return Jwts.parser()
                 .verifyWith(signingKey())
@@ -53,7 +49,6 @@ public class JwtTokenServiceImpl implements JwtTokenService {
                 .getSubject();
     }
 
-    @Override
     public boolean isAccessTokenValid(String token) {
         try {
             extractSubject(token);

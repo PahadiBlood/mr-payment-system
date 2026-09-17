@@ -14,7 +14,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import xyz.rawmanoj.mrbank.exception.response.ErrorResponse;
-import xyz.rawmanoj.mrbank.service.JwtTokenService;
+import xyz.rawmanoj.mrbank.service.impl.JwtTokenServiceImpl;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -25,7 +25,7 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
 
-    private final JwtTokenService jwtTokenService;
+    private final JwtTokenServiceImpl jwtTokenService;
     private final ObjectMapper objectMapper;
 
     @Override
