@@ -1,0 +1,32 @@
+# Build output
+target/
+build/
+out/
+
+# Maven wrapper binary cache
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE files
+.idea/
+*.iml
+*.iws
+*.ipr
+.classpath
+.project
+.settings/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Local environment files
+.env
+.env.*
+
+# Test and coverage output
+coverage/
+.nyc_output/
