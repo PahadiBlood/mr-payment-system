@@ -22,9 +22,28 @@ spring:
       ddl-auto: update
     show-sql: true
 
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${GMAIL_EMAIL:your-email@gmail.com}
+    password: ${GMAIL_PASSWORD:your-app-password}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
 application:
   security:
     jwt:
       secret: "bXItdGVtcG9yYXJ5LWxvY2FsLWRldi1qd3Qtc2VjcmV0LWtleS1tdXN0LWJlLWxvbmc="
       access-token-expiration: 15m
       refresh-token-expiration: 7d
+  email:
+    from: ${GMAIL_EMAIL:your-email@gmail.com}
+    from-name: "MR Bank"
