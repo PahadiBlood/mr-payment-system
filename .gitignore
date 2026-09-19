@@ -27,6 +27,11 @@ logs/
 .env
 .env.*
 
+# Application configuration files with sensitive data
+application-dev.yaml
+application-prod.yaml
+application-local.yaml
+
 # Test and coverage output
 coverage/
 .nyc_output/
