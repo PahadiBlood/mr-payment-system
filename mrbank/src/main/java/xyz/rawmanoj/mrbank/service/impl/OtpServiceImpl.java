@@ -5,7 +5,7 @@ import org.springframework.stereotype.Service;
 import xyz.rawmanoj.mrbank.dto.request.SendOtpRequest;
 import xyz.rawmanoj.mrbank.exception.ErrorCode;
 import xyz.rawmanoj.mrbank.exception.MrBankException;
-import xyz.rawmanoj.mrbank.repository.UserRepo;
+import xyz.rawmanoj.mrbank.repository.UserRepository;
 import xyz.rawmanoj.mrbank.service.EmailService;
 import xyz.rawmanoj.mrbank.service.RedisCacheService;
 
@@ -16,13 +16,13 @@ import java.util.Random;
 @Service
 public class OtpServiceImpl {
     private final EmailService emailService;
-    private final UserRepo userRepo;
+    private final UserRepository userRepository;
     private final RedisCacheService redisCacheService;
 
     public void sendOtp(SendOtpRequest request) {
         try {
             //verify email
-            if (!userRepo.existsByEmail(request.email())) {
+            if (!userRepository.existsByEmail(request.email())) {
                 throw new MrBankException(ErrorCode.RESOURCE_NOT_FOUND, "Email does not exist");
             }
             //generate otp
