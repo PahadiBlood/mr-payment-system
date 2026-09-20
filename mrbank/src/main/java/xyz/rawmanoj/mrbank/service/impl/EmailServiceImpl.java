@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import xyz.rawmanoj.mrbank.service.EmailService;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,7 @@ public class EmailServiceImpl implements EmailService {
     @Value("${application.email.from-name}")
     private String fromName;
 
+    @Async
     @Override
     public void sendOtp(String email, String otp) {
         try {

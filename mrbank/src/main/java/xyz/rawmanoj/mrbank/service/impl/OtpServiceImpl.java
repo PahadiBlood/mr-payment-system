@@ -10,9 +10,9 @@ import xyz.rawmanoj.mrbank.repository.UserRepository;
 import xyz.rawmanoj.mrbank.service.EmailService;
 import xyz.rawmanoj.mrbank.service.RedisCacheService;
 
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Optional;
-import java.util.Random;
 
 @Slf4j
 @AllArgsConstructor
@@ -24,7 +24,7 @@ public class OtpServiceImpl {
     private static final String OTP_CACHE_PREFIX = "otp:";
     private static final String OTP_VERIFICATION_PREFIX = "otp_verified:";
     private static final int OTP_EXPIRY_MINUTES = 10;
-    private static final int OTP_MAX_LENGTH = 6;
+    private static final SecureRandom secureRandom = new SecureRandom();
 
     public void sendOtp(SendOtpRequest request) {
         log.debug("Processing OTP send request for email: {}", request.email());
@@ -39,6 +39,7 @@ public class OtpServiceImpl {
             redisCacheService.set(cacheKey, otp, Duration.ofMinutes(OTP_EXPIRY_MINUTES));
             log.info("OTP generated and cached for email: {}", request.email());
 
+            //need to handle resilience
             emailService.sendOtp(request.email(), otp);
             log.info("OTP sent successfully to email: {}", request.email());
         } catch (MrBankException e) {
@@ -51,8 +52,15 @@ public class OtpServiceImpl {
     }
 
     public String generateOtp() {
-        Random random = new Random();
-        int otp = 100000 + random.nextInt(900000);
+        /*
+        * Why add 100000?
+            random.nextInt(900000) returns a number from 0 to 899999, so it does not always have 6 digits. It could return 42 or 7318, which are 2 and 4 digits.
+            Adding 100000 shifts the whole range up:
+            Smallest: 0 + 100000 = 100000
+            Largest: 899999 + 100000 = 999999
+        * */
+
+        int otp = 100000 + secureRandom.nextInt(900000);
         log.debug("Generated OTP with length: {}", String.valueOf(otp).length());
         return String.valueOf(otp);
     }
@@ -60,9 +68,9 @@ public class OtpServiceImpl {
     public boolean verifyOtp(String email, String otp) {
         log.debug("Verifying OTP for email: {}", email);
         try {
-            if (!userRepository.existsByEmail(email)) {
-                log.warn("OTP verification failed - email does not exist: {}", email);
-                throw new MrBankException(ErrorCode.RESOURCE_NOT_FOUND, "Email does not exist");
+            if (userRepository.existsByEmail(email)) {
+                log.warn("OTP verification failed - email already exist: {}", email);
+                throw new MrBankException(ErrorCode.CONFLICT, "Email already exist");
             }
 
             String cacheKey = OTP_CACHE_PREFIX + email;
@@ -99,7 +107,7 @@ public class OtpServiceImpl {
 
             if (isOtpVerified.isEmpty() || !isOtpVerified.get().equalsIgnoreCase("true")) {
                 log.warn("OTP not verified for email: {}", email);
-                throw new MrBankException(ErrorCode.RESOURCE_NOT_FOUND, "OTP not verified");
+                return false;
             }
             log.debug("OTP verified status confirmed for email: {}", email);
             return true;
