@@ -1,7 +1,5 @@
 server:
   port: 8000
-  servlet:
-    context-path: /api
 
 spring:
   application:
@@ -40,6 +38,10 @@ spring:
           connectiontimeout: 5000
           timeout: 5000
           writetimeout: 5000
+
+  threads:
+    virtual:
+      enabled: true
 
 application:
   security:
