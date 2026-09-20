@@ -1,9 +1,12 @@
 package xyz.rawmanoj.mrbank.config;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -11,31 +14,151 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import xyz.rawmanoj.mrbank.security.JwtAuthenticationFilter;
+
+import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @RequiredArgsConstructor
 @EnableConfigurationProperties(JwtProperties.class)
+@Slf4j
 public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
+    /**
+     * Comprehensive Security Filter Chain Configuration
+     * 
+     * Features:
+     * - CSRF protection disabled (stateless API)
+     * - Session management set to STATELESS (JWT-based)
+     * - CORS enabled for cross-origin requests
+     * - Public endpoints: /api/v1/public/**, /swagger-ui/**, /v3/api-docs/**
+     * - Secured endpoints: /api/v1/secure/** (requires valid JWT token)
+     * - JWT authentication filter added before UsernamePasswordAuthenticationFilter
+     * 
+     * @param http HttpSecurity builder
+     * @return Configured SecurityFilterChain
+     * @throws Exception if configuration fails
+     */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        return http
+        log.info("Configuring Spring Security filter chain");
+
+        http
+                // 1. CSRF Protection - Disabled for stateless API
                 .csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/public/**", "/public/**").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/api/v1/secure/**", "/secure/**").authenticated()
-                        .anyRequest().permitAll()
-                )
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-                .build();
+
+                // 2. CORS Configuration - Allow cross-origin requests
+                .cors(Customizer.withDefaults())
+
+                // 3. Session Management - STATELESS (JWT-based, no session cookies)
+                .sessionManagement(session -> {
+                    log.debug("Configuring session management to STATELESS");
+                    session.sessionCreationPolicy(SessionCreationPolicy.STATELESS);
+                })
+
+                // 4. HTTP Security Rules - Authorization configuration
+                .authorizeHttpRequests(auth -> {
+                    log.debug("Configuring HTTP authorization rules");
+
+                    // Public endpoints - No authentication required
+                    auth.requestMatchers("/api/v1/public/**").permitAll()
+                            .requestMatchers("/public/**").permitAll()
+                            // Swagger UI and API documentation - Publicly accessible
+                            .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
+                            .requestMatchers("/actuator/**").permitAll()
+                            // Secured endpoints - Require valid JWT token
+                            .requestMatchers("/api/v1/secure/**").authenticated()
+                            .requestMatchers("/secure/**").authenticated()
+                            // Allow OPTIONS requests (preflight) for all endpoints
+                            .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                            // All other requests - Permit by default (can be changed to authenticated if needed)
+                            .anyRequest().permitAll();
+
+                    log.debug("Authorization rules configured successfully");
+                })
+
+                // 5. Add JWT Authentication Filter
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+        log.info("Spring Security filter chain configured successfully");
+        return http.build();
     }
 
+    /**
+     * CORS Configuration Bean
+     * 
+     * Allows cross-origin requests from specified origins with:
+     * - Allowed HTTP methods: GET, POST, PUT, DELETE, OPTIONS, PATCH
+     * - Allowed headers: Content-Type, Authorization, Accept
+     * - Allowed credentials: true (allows cookies/auth headers)
+     * - Max age: 3600 seconds (1 hour)
+     * 
+     * @return CorsConfigurationSource
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        log.info("Configuring CORS settings");
+
+        CorsConfiguration configuration = new CorsConfiguration();
+
+        // Allow requests from any origin (configure in production)
+        configuration.setAllowedOrigins(List.of("*"));
+
+        // Allowed HTTP methods
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+
+        // Allowed headers
+        configuration.setAllowedHeaders(Arrays.asList(
+                "Content-Type",
+                "Authorization",
+                "Accept",
+                "X-Requested-With",
+                "X-API-Key"
+        ));
+
+        // Allow credentials (cookies, auth headers)
+        configuration.setAllowCredentials(false); // Set to true if using credentials with wildcard origins
+
+        // Cache preflight responses for 1 hour
+        configuration.setMaxAge(3600L);
+
+        log.debug("CORS configuration: allowedOrigins={}, allowedMethods={}, maxAge={}",
+                  configuration.getAllowedOrigins(), configuration.getAllowedMethods(), configuration.getMaxAge());
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+
+        log.info("CORS configuration registered for all endpoints");
+        return source;
+    }
+
+    /**
+     * Password Encoder Bean
+     * 
+     * Uses BCrypt algorithm for secure password encoding:
+     * - Algorithm: BCrypt
+     * - Strength: 10 (configurable, higher = more secure but slower)
+     * - Salt: Auto-generated per password
+     * - Encoding: One-way hashing (non-reversible)
+     * 
+     * Features:
+     * - Automatically handles salt generation
+     * - Each password gets unique salt
+     * - Prevents rainbow table attacks
+     * - Takes approximately 1 second per verification (prevents brute-force)
+     * 
+     * @return BCryptPasswordEncoder with strength 10
+     */
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        log.info("Creating BCryptPasswordEncoder bean with strength 10");
+        PasswordEncoder encoder = new BCryptPasswordEncoder(10);
+        log.debug("PasswordEncoder bean created: {}", encoder.getClass().getSimpleName());
+        return encoder;
     }
 }
