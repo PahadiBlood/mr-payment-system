@@ -1,10 +1,13 @@
 server:
   port: 8000
-
+  servlet:
+    context-path: /api
 
 spring:
   application:
     name: mrbank
+  profiles:
+    active: dev
 
   datasource:
     url: jdbc:postgresql://localhost:5432/mrbank
@@ -47,3 +50,26 @@ application:
   email:
     from: ${GMAIL_EMAIL:your-email@gmail.com}
     from-name: "MR Bank"
+  api:
+    paths:
+      auth: /api/v1/public/auth
+      users: /api/v1/users
+      accounts: /api/v1/accounts
+      transactions: /api/v1/transactions
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: DEBUG
+    org.springframework.security: DEBUG
+    xyz.rawmanoj.mrbank: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/mrbank.log
+    max-size: 10MB
+    max-history: 30
+    total-size-cap: 1GB

@@ -1,0 +1,8 @@
+spring:
+  mail:
+    username: msrawat615@gmail.com
+    password: sfsdxmbvvgxjlogv
+
+application:
+  email:
+    from: msrawat615@gmail.com
