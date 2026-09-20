@@ -43,6 +43,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenServiceImpl jwtTokenService;
     private final ObjectMapper objectMapper;
+    
+    static {
+        // This runs when class is first loaded
+        System.out.println("🔐 JwtAuthenticationFilter class loaded");
+    }
 
     /**
      * Determines if this filter should skip processing for the current request.
@@ -58,13 +63,28 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
+        // Get path (includes context path /api if configured)
         String path = request.getRequestURI();
-        boolean shouldSkip = !path.startsWith("/api/v1/secure") && !path.startsWith("/secure");
+        String contextPath = request.getContextPath();
+        String method = request.getMethod();
+        
+        log.info("🔍 shouldNotFilter() CALLED - method={}, fullPath={}, contextPath={}", 
+                 method, path, contextPath);
+        
+        // Remove context path from the request URI for pattern matching
+        String pathWithoutContext = path.substring(contextPath.length());
+        
+        // Apply filter only for secured endpoints
+        boolean shouldApplyFilter = pathWithoutContext.startsWith("/api/v1/secure") || 
+                                    pathWithoutContext.startsWith("/secure");
+        boolean shouldSkip = !shouldApplyFilter;
 
         if (shouldSkip) {
-            log.debug("Skipping JWT authentication for public endpoint: {}", path);
+            log.info("✅ SKIP JWT filter for public path: {} -> pathWithoutContext: {}", 
+                     path, pathWithoutContext);
         } else {
-            log.debug("Applying JWT authentication filter for secured endpoint: {}", path);
+            log.info("🔐 APPLY JWT filter for secured path: {} -> pathWithoutContext: {}", 
+                     path, pathWithoutContext);
         }
 
         return shouldSkip;
@@ -95,14 +115,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String requestPath = request.getRequestURI();
         String method = request.getMethod();
 
-        log.debug("Processing JWT authentication for {} {}", method, requestPath);
-
+        log.info("🎯 doFilterInternal() CALLED - method={}, path={}", method, requestPath);
+        
         try {
             // Step 1: Extract Bearer token from Authorization header
             String token = extractBearerToken(request);
 
             if (token == null) {
-                log.warn("Missing Authorization header for secured endpoint: {} {}", method, requestPath);
+                log.warn("❌ Missing Authorization header for secured endpoint: {} {}", method, requestPath);
                 writeUnauthorizedResponse(response, "Missing or malformed Authorization header", requestPath);
                 return;
             }
@@ -110,7 +130,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // Step 2: Validate token format and signature
             log.debug("Validating JWT token for endpoint: {}", requestPath);
             if (!jwtTokenService.isAccessTokenValid(token)) {
-                log.warn("Invalid or expired JWT token for endpoint: {} {}", method, requestPath);
+                log.warn("❌ Invalid or expired JWT token for endpoint: {} {}", method, requestPath);
                 writeUnauthorizedResponse(response, "Invalid or expired access token", requestPath);
                 return;
             }
@@ -128,10 +148,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
             SecurityContextHolder.getContext().setAuthentication(authentication);
 
-            log.info("User authenticated successfully: {} | Endpoint: {} {}", subject, method, requestPath);
+            log.info("✅ User authenticated successfully: {} | Endpoint: {} {}", subject, method, requestPath);
 
         } catch (Exception e) {
-            log.error("Error during JWT authentication for endpoint: {} {} - {}",
+            log.error("❌ Error during JWT authentication for endpoint: {} {} - {}",
                       method, requestPath, e.getMessage(), e);
             writeUnauthorizedResponse(response, "Authentication failed: " + e.getMessage(), requestPath);
             return;
@@ -142,7 +162,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             log.debug("Request processing completed for: {} {}", method, requestPath);
         } catch (Exception e) {
-            log.error("Error during filter chain processing for: {} {} - {}",
+            log.error("❌ Error during filter chain processing for: {} {} - {}",
                       method, requestPath, e.getMessage(), e);
             throw e;
         }

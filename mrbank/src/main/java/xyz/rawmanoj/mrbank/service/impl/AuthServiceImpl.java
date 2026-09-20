@@ -16,7 +16,10 @@ import xyz.rawmanoj.mrbank.entity.RefreshToken;
 import xyz.rawmanoj.mrbank.entity.User;
 import xyz.rawmanoj.mrbank.exception.ConflictException;
 import xyz.rawmanoj.mrbank.exception.UnauthorizedException;
+import xyz.rawmanoj.mrbank.experiment.resilience.CustomResilienceHandlerService;
 import xyz.rawmanoj.mrbank.repository.UserRepository;
+
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -27,6 +30,7 @@ public class AuthServiceImpl {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final OtpServiceImpl otpService;
+    private final CustomResilienceHandlerService customResilienceHandlerService;
 
     @Transactional
     public MessageResponse register(RegisterRequest request) {
@@ -55,13 +59,13 @@ public class AuthServiceImpl {
             user.setPassword(passwordEncoder.encode(request.password()));
 
             try {
-                User savedUser = userRepository.save(user);
+                userRepository.save(user);
                 log.info("User registered successfully with email: {}", email);
                 return new MessageResponse("User registered successfully");
             } catch (DataIntegrityViolationException e) {
                 // Handle race condition: another thread inserted the same email concurrently
-                log.warn("Race condition detected: Email was registered concurrently for email: {} - {}", 
-                         email, e.getMessage());
+                log.warn("Race condition detected: Email was registered concurrently for email: {} - {}",
+                        email, e.getMessage());
                 throw new ConflictException("Email already registered. Please try logging in or use a different email.");
             }
 
@@ -76,7 +80,20 @@ public class AuthServiceImpl {
 
     public AuthResponse login(LoginRequest request) {
         log.debug("Processing login for email: {}", request.email());
-        throw new UnsupportedOperationException("Login logic is not implemented yet");
+        Optional<User> userOpt = userRepository.findByEmail(request.email());
+        if (userOpt.isEmpty()) {
+            throw new UnauthorizedException("Invalid email or password");
+        }
+        User user = userOpt.get();
+        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            throw new UnauthorizedException("Invalid email or password");
+        }
+        String accessToken = jwtTokenService.generateAccessToken(user);
+        String refreshToken = jwtTokenService.generateRefreshTokenValue();
+
+        //refreshTokenService.createRefreshToken(user, refreshToken);
+        customResilienceHandlerService.refreshTokenStore(user, refreshToken);
+        return new AuthResponse(accessToken, refreshToken);
     }
 
     public AuthResponse refreshToken(TokenRefreshRequest request) {
