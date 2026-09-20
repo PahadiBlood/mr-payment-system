@@ -27,7 +27,11 @@ public class RefreshTokenServiceImpl {
         token.setUser(user);
         token.setTokenHash(hashToken(refreshToken));
         token.setExpiresAt(Instant.now().plus(jwtProperties.getRefreshTokenExpiration()));
-
+        try {
+            var i = 1 / 0;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         return refreshTokenRepository.save(token);
     }
 
