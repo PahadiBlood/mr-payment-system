@@ -24,6 +24,9 @@ public class EmailServiceImpl implements EmailService {
     @Override
     public void sendOtp(String email, String otp) {
         try {
+            // This is for testing purposes only; use a Thymeleaf template to send real emails.
+
+            log.info("Mail sent to email : {}", email);
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromEmail);
             message.setTo(email);
@@ -33,6 +36,7 @@ public class EmailServiceImpl implements EmailService {
                     + "Do not share this OTP with anyone.\n\n"
                     + "If you didn't request this, please ignore this email.");
 
+            log.info("Sending OTP email to {} with otp {}", email, otp);
             mailSender.send(message);
             log.info("OTP sent successfully to: {}", email);
         } catch (Exception e) {
