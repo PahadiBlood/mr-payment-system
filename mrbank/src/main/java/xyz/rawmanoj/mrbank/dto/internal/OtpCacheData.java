@@ -1,4 +1,10 @@
 package xyz.rawmanoj.mrbank.dto.internal;
 
-public class OtpCacheData {
+import java.time.Instant;
+
+public record OtpCacheData(
+        String email,
+        String otp,
+        Instant createdAt
+) {
 }

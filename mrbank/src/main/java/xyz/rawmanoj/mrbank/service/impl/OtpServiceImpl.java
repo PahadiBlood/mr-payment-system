@@ -2,7 +2,9 @@ package xyz.rawmanoj.mrbank.service.impl;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import xyz.rawmanoj.mrbank.dto.internal.OtpCacheData;
 import xyz.rawmanoj.mrbank.dto.request.SendOtpRequest;
 import xyz.rawmanoj.mrbank.exception.ErrorCode;
 import xyz.rawmanoj.mrbank.exception.MrBankException;
@@ -12,12 +14,17 @@ import xyz.rawmanoj.mrbank.service.RedisCacheService;
 
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 
 @Slf4j
 @AllArgsConstructor
 @Service
 public class OtpServiceImpl {
+
+    @Value("application.otp.max.attempts")
+    private int maxAttempts = 5;
+
     private final EmailService emailService;
     private final UserRepository userRepository;
     private final RedisCacheService redisCacheService;
@@ -27,26 +34,48 @@ public class OtpServiceImpl {
     private static final SecureRandom secureRandom = new SecureRandom();
 
     public void sendOtp(SendOtpRequest request) {
-        log.debug("Processing OTP send request for email: {}", request.email());
+        String email = request.email();
+        log.debug("Processing OTP send request for email: {}", email);
         try {
-            if (userRepository.existsByEmail(request.email())) {
-                log.warn("Attempted to send OTP to existing email: {}", request.email());
+            //handle retry limit for max try and cooldown time
+            String cacheKey = OTP_CACHE_PREFIX + email;
+            String attemptsKey = OTP_CACHE_PREFIX + "send:attempts:" + email;
+            Optional<OtpCacheData> cacheDataOpt = redisCacheService.get(cacheKey, OtpCacheData.class);
+            if (cacheDataOpt.isPresent()) {
+                OtpCacheData cacheData = cacheDataOpt.get();
+
+                Optional<Integer> attempts = redisCacheService.get(attemptsKey, Integer.class);
+                if (attempts.isPresent() && attempts.get() > maxAttempts) {
+                    throw new MrBankException(ErrorCode.FORBIDDEN, "Too many otp requests. Please re-try after 24 hours");
+                }
+
+                Instant createdAt = cacheData.createdAt();
+                if (!createdAt.isBefore(createdAt.plusSeconds(30))) {
+                    throw new MrBankException(ErrorCode.BAD_REQUEST, "Frequent request wait for 30 seconds");
+                }
+            }
+
+            if (userRepository.existsByEmail(email)) {
+                log.warn("Attempted to send OTP to existing email: {}", email);
                 throw new MrBankException(ErrorCode.CONFLICT, "Email already exist");
             }
 
             String otp = generateOtp();
-            String cacheKey = OTP_CACHE_PREFIX + request.email();
-            redisCacheService.set(cacheKey, otp, Duration.ofMinutes(OTP_EXPIRY_MINUTES));
-            log.info("OTP generated and cached for email: {}", request.email());
+            redisCacheService.set(attemptsKey, 1, Duration.ofDays(1));
+
+            OtpCacheData cacheData = new OtpCacheData(email, otp, Instant.now());
+
+            redisCacheService.set(cacheKey, cacheData, Duration.ofMinutes(OTP_EXPIRY_MINUTES));
+            log.info("OTP generated and cached for email: {}", email);
 
             //need to handle resilience
-            emailService.sendOtp(request.email(), otp);
-            log.info("OTP sent successfully to email: {}", request.email());
+            emailService.sendOtp(email, otp);
+            log.info("OTP sent successfully to email: {}", email);
         } catch (MrBankException e) {
-            log.error("MrBankException while sending OTP to email: {} - Error: {}", request.email(), e.getMessage());
+            log.error("MrBankException while sending OTP to email: {} - Error: {}", email, e.getMessage());
             throw e;
         } catch (Exception e) {
-            log.error("Unexpected error while sending OTP to email: {} - Error: {}", request.email(), e.getMessage(), e);
+            log.error("Unexpected error while sending OTP to email: {} - Error: {}", email, e.getMessage(), e);
             throw new MrBankException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
     }
@@ -68,9 +97,16 @@ public class OtpServiceImpl {
     public boolean verifyOtp(String email, String otp) {
         log.debug("Verifying OTP for email: {}", email);
         try {
-            if (userRepository.existsByEmail(email)) {
-                log.warn("OTP verification failed - email already exist: {}", email);
-                throw new MrBankException(ErrorCode.CONFLICT, "Email already exist");
+            String attemptsKey = OTP_CACHE_PREFIX + "send:attempts:" + email;
+
+            Optional<Integer> verifyOtpAttemptsOpt = redisCacheService.get(attemptsKey, Integer.class);
+
+            if (verifyOtpAttemptsOpt.isEmpty()) {
+                log.warn("OTP verification failed - OTP expired or not found for email: {}", email);
+                throw new MrBankException(ErrorCode.RESOURCE_NOT_FOUND, "OTP does not exist or expired");
+            }
+            if (verifyOtpAttemptsOpt.get() > maxAttempts) {
+                throw new MrBankException(ErrorCode.FORBIDDEN, "Too many otp verification requests. Please re-try after 24 hours");
             }
 
             String cacheKey = OTP_CACHE_PREFIX + email;
@@ -84,6 +120,11 @@ public class OtpServiceImpl {
             if (!cachedOtp.get().equals(otp)) {
                 log.warn("OTP verification failed - OTP mismatch for email: {}", email);
                 throw new MrBankException(ErrorCode.RESOURCE_NOT_FOUND, "OTP does not match");
+            }
+
+            if (userRepository.existsByEmail(email)) {
+                log.warn("OTP verification failed - email already exist: {}", email);
+                throw new MrBankException(ErrorCode.CONFLICT, "Email already exist");
             }
 
             String verificationKey = OTP_VERIFICATION_PREFIX + email;

@@ -58,6 +58,9 @@ application:
       users: /api/v1/users
       accounts: /api/v1/accounts
       transactions: /api/v1/transactions
+  otp:
+    max:
+      attempts: ${OTP_MAX_ATTEMPTS:5}
 
 logging:
   level:
