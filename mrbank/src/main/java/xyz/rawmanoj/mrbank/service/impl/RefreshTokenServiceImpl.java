@@ -28,6 +28,7 @@ public class RefreshTokenServiceImpl {
         token.setTokenHash(hashToken(refreshToken));
         token.setExpiresAt(Instant.now().plus(jwtProperties.getRefreshTokenExpiration()));
         try {
+            //throwing custom error
             var i = 1 / 0;
         } catch (Exception e) {
             throw new RuntimeException(e);
