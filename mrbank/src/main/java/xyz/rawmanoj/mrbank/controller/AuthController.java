@@ -2,7 +2,6 @@ package xyz.rawmanoj.mrbank.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +21,6 @@ import xyz.rawmanoj.mrbank.dto.response.AuthResponse;
 import xyz.rawmanoj.mrbank.dto.response.MessageResponse;
 import xyz.rawmanoj.mrbank.service.impl.AuthServiceImpl;
 import xyz.rawmanoj.mrbank.service.impl.OtpServiceImpl;
-import xyz.rawmanoj.mrbank.util.CommonUtils;
 
 @Tag(name = "Authentication", description = "Public authentication APIs")
 @RequestMapping("/api/v1/public/auth")
@@ -49,10 +47,10 @@ public class AuthController {
 
     @Operation(summary = "Send OTP", description = "Generates and stores an OTP for the provided email.")
     @PostMapping("/send-otp")
-    public ResponseEntity<MessageResponse> sendOtp(@Valid @RequestBody SendOtpRequest request, HttpServletRequest req) {
+    public ResponseEntity<MessageResponse> sendOtp(@Valid @RequestBody SendOtpRequest request) {
         log.info("Send OTP request received for email: {}", request.email());
         try {
-            otpService.sendOtp(request, CommonUtils.getClientIp(req));
+            otpService.sendOtp(request);
             log.info("OTP sent successfully to email: {}", request.email());
             return ResponseEntity.ok(new MessageResponse("OTP sent successfully"));
         } catch (Exception e) {
