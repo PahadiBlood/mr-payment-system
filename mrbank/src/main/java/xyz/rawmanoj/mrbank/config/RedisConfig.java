@@ -1,7 +1,5 @@
 package xyz.rawmanoj.mrbank.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -12,17 +10,14 @@ import tools.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import tools.jackson.databind.jsontype.PolymorphicTypeValidator;
 
 @Configuration
-@RequiredArgsConstructor
 public class RedisConfig {
-    private final ObjectMapper objectMapper;
 
     @Bean
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
-
-        // Whitelist the types allowed to be deserialized (safer than the old default)
+        // @class is required for application types such as OtpCacheData. Records are final, and without
+        // the hint a read comes back as a map. java.lang numbers stay plain JSON so INCR still works.
         PolymorphicTypeValidator typeValidator = BasicPolymorphicTypeValidator.builder()
                 .allowIfSubType("xyz.rawmanoj.mrbank.")
-                .allowIfSubType("java.util.")
                 .allowIfSubType("java.time.")
                 .allowIfSubType("java.math.")
                 .build();
