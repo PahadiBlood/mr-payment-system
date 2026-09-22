@@ -1,6 +1,7 @@
 package xyz.rawmanoj.mrbank.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -14,6 +15,7 @@ import xyz.rawmanoj.mrbank.exception.response.FieldErrorResponse;
 import java.time.Instant;
 import java.util.List;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -35,6 +37,7 @@ public class GlobalExceptionHandler {
             MethodArgumentNotValidException exception,
             HttpServletRequest request
     ) {
+        log.warn("Validation failed on {} {}", request.getMethod(), request.getRequestURI());
         List<FieldErrorResponse> fieldErrors = exception.getBindingResult()
                 .getFieldErrors()
                 .stream()
@@ -49,12 +52,9 @@ public class GlobalExceptionHandler {
                 .body(buildErrorResponse(errorCode.getCode(), "Validation failed", status, request, fieldErrors));
     }
 
-    @ExceptionHandler({
-            MissingServletRequestParameterException.class,
-            HttpMessageNotReadableException.class
-    })
-    public ResponseEntity<ErrorResponse> handleBadRequestException(
-            Exception exception,
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingParameter(
+            MissingServletRequestParameterException exception,
             HttpServletRequest request
     ) {
         ErrorCode errorCode = ErrorCode.BAD_REQUEST;
@@ -65,11 +65,26 @@ public class GlobalExceptionHandler {
                 .body(buildErrorResponse(errorCode.getCode(), exception.getMessage(), status, request, List.of()));
     }
 
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(
+            HttpMessageNotReadableException exception,
+            HttpServletRequest request
+    ) {
+        log.warn("Malformed request body on {} {}", request.getMethod(), request.getRequestURI());
+        ErrorCode errorCode = ErrorCode.BAD_REQUEST;
+        HttpStatus status = errorCode.getHttpStatus();
+
+        return ResponseEntity
+                .status(status)
+                .body(buildErrorResponse(errorCode.getCode(), "Malformed request body", status, request, List.of()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleException(
             Exception exception,
             HttpServletRequest request
     ) {
+        log.error("Unhandled error on {} {}", request.getMethod(), request.getRequestURI(), exception);
         ErrorCode errorCode = ErrorCode.INTERNAL_SERVER_ERROR;
         HttpStatus status = errorCode.getHttpStatus();
 
