@@ -14,120 +14,108 @@ import xyz.rawmanoj.mrbank.dto.response.AuthResponse;
 import xyz.rawmanoj.mrbank.dto.response.MessageResponse;
 import xyz.rawmanoj.mrbank.entity.RefreshToken;
 import xyz.rawmanoj.mrbank.entity.User;
+import xyz.rawmanoj.mrbank.enumeration.UserStatus;
 import xyz.rawmanoj.mrbank.exception.ConflictException;
 import xyz.rawmanoj.mrbank.exception.UnauthorizedException;
-import xyz.rawmanoj.mrbank.experiment.resilience.CustomResilienceHandlerService;
 import xyz.rawmanoj.mrbank.repository.UserRepository;
-
-import java.util.Optional;
+import xyz.rawmanoj.mrbank.service.AuthService;
+import xyz.rawmanoj.mrbank.service.JwtTokenService;
+import xyz.rawmanoj.mrbank.service.OtpService;
+import xyz.rawmanoj.mrbank.service.RefreshTokenService;
+import xyz.rawmanoj.mrbank.util.EmailAddress;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class AuthServiceImpl {
-    private final JwtTokenServiceImpl jwtTokenService;
-    private final RefreshTokenServiceImpl refreshTokenService;
+public class AuthServiceImpl implements AuthService {
+
+    // Real bcrypt hash so a missing account still pays the compare cost.
+    static final String DUMMY_PASSWORD_HASH =
+            "$2a$10$v/bt.lixAf.saq/8XBxpS.pxhGJlPSLkfxqC0pvMtTRB/AKXA7KyO";
+
+    private final JwtTokenService jwtTokenService;
+    private final RefreshTokenService refreshTokenService;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final OtpServiceImpl otpService;
-    private final CustomResilienceHandlerService customResilienceHandlerService;
+    private final OtpService otpService;
 
+    /** Creates the user after the email has been verified with a code. */
+    @Override
     @Transactional
     public MessageResponse register(RegisterRequest request) {
-        String email = request.email();
-        log.debug("Processing registration for email: {}", email);
-
-        try {
-            // Step 1: Verify OTP was validated for this email
-            log.debug("Verifying OTP status for email: {}", email);
-            if (!otpService.isOtpVerified(email)) {
-                log.warn("Registration attempt with unverified OTP for email: {}", email);
-                throw new UnauthorizedException("Email must be verified with OTP before registration");
-            }
-
-            // Step 2: Check if email already exists (race condition check)
-            log.debug("Checking if email already exists in database: {}", email);
-            if (userRepository.existsByEmail(email)) {
-                log.warn("Registration attempt with existing email: {}", email);
-                throw new ConflictException("Email already registered");
-            }
-
-            // Step 3: Create and save new user
-            log.debug("Creating new user entity for email: {}", email);
-            User user = new User();
-            user.setEmail(email);
-            user.setPassword(passwordEncoder.encode(request.password()));
-
-            try {
-                userRepository.save(user);
-                log.info("User registered successfully with email: {}", email);
-                return new MessageResponse("User registered successfully");
-            } catch (DataIntegrityViolationException e) {
-                // Handle race condition: another thread inserted the same email concurrently
-                log.warn("Race condition detected: Email was registered concurrently for email: {} - {}",
-                        email, e.getMessage());
-                throw new ConflictException("Email already registered. Please try logging in or use a different email.");
-            }
-
-        } catch (UnauthorizedException | ConflictException e) {
-            log.error("Registration validation failed for email: {} - {}", email, e.getMessage());
-            throw e;
-        } catch (Exception e) {
-            log.error("Unexpected error during registration for email: {} - {}", email, e.getMessage(), e);
-            throw new RuntimeException("Registration failed. Please try again later.");
+        String email = EmailAddress.normalize(request.email());
+        if (userRepository.existsByEmail(email)) {
+            log.warn("Registration rejected for {}: email already registered", email);
+            throw new ConflictException("Email already registered");
         }
+        if (!otpService.consumeEmailVerification(email)) {
+            log.warn("Registration rejected for {}: email is not OTP verified", email);
+            throw new UnauthorizedException("Email must be verified with OTP before registration");
+        }
+
+        User user = new User();
+        user.setEmail(email);
+        user.setPassword(passwordEncoder.encode(request.password()));
+        try {
+            userRepository.save(user);
+        } catch (DataIntegrityViolationException ex) {
+            log.warn("Registration rejected for {}: email was registered concurrently", email);
+            throw new ConflictException("Email already registered. Please try logging in or use a different email.");
+        }
+        log.info("User registered: {}", email);
+        return new MessageResponse("User registered successfully");
     }
 
+    /** Checks the password and returns tokens when the account is active. */
+    @Override
+    @Transactional
     public AuthResponse login(LoginRequest request) {
-        log.debug("Processing login for email: {}", request.email());
-        Optional<User> userOpt = userRepository.findByEmail(request.email());
-        if (userOpt.isEmpty()) {
+        String email = EmailAddress.normalize(request.email());
+        User user = userRepository.findByEmail(email).orElse(null);
+        String passwordHash = user == null || user.getPassword() == null
+                ? DUMMY_PASSWORD_HASH
+                : user.getPassword();
+        boolean passwordMatches = passwordEncoder.matches(request.password(), passwordHash);
+        if (user == null || !passwordMatches) {
+            log.warn("Login rejected for {}", email);
             throw new UnauthorizedException("Invalid email or password");
         }
-        User user = userOpt.get();
-        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
-            throw new UnauthorizedException("Invalid email or password");
+        if (user.getUserStatus() != UserStatus.ACTIVE) {
+            log.warn("Login rejected for {}: account status {}", email, user.getUserStatus());
+            throw new UnauthorizedException("Account is not active");
         }
         String accessToken = jwtTokenService.generateAccessToken(user);
         String refreshToken = jwtTokenService.generateRefreshTokenValue();
-
-        //refreshTokenService.createRefreshToken(user, refreshToken);
-        customResilienceHandlerService.refreshTokenStore(user, refreshToken);
+        refreshTokenService.createRefreshToken(user, refreshToken);
         return new AuthResponse(accessToken, refreshToken);
     }
 
+    /** Checks the refresh token, retires it, and returns a new pair. */
+    @Override
+    @Transactional
     public AuthResponse refreshToken(TokenRefreshRequest request) {
-        log.debug("Processing token refresh");
         try {
-            RefreshToken refreshToken = refreshTokenService.verifyRefreshToken(request.refreshToken());
-            User user = refreshToken.getUser();
-
-            if (user == null) {
-                log.warn("Invalid refresh token: user is null");
+            RefreshToken existing = refreshTokenService.verifyRefreshToken(request.refreshToken());
+            User user = existing.getUser();
+            if (user.getUserStatus() != UserStatus.ACTIVE) {
+                refreshTokenService.revokeRefreshToken(request.refreshToken());
                 throw new UnauthorizedException("Invalid refresh token");
             }
-
+            refreshTokenService.revokeRefreshToken(request.refreshToken());
+            String refreshToken = jwtTokenService.generateRefreshTokenValue();
+            refreshTokenService.createRefreshToken(user, refreshToken);
             String accessToken = jwtTokenService.generateAccessToken(user);
-            log.debug("Access token refreshed successfully for user: {}", user.getEmail());
-            return new AuthResponse(accessToken, request.refreshToken());
-        } catch (UnauthorizedException e) {
-            log.error("Unauthorized token refresh attempt: {}", e.getMessage());
-            throw e;
-        } catch (Exception e) {
-            log.error("Error during token refresh: {}", e.getMessage(), e);
-            throw new UnauthorizedException("Failed to refresh token");
+            return new AuthResponse(accessToken, refreshToken);
+        } catch (UnauthorizedException ex) {
+            log.warn("Token refresh rejected: {}", ex.getMessage());
+            throw ex;
         }
     }
 
+    /** Retires the refresh token so it cannot be used again. */
+    @Override
     public MessageResponse logout(LogoutRequest request) {
-        log.debug("Processing logout");
-        try {
-            refreshTokenService.revokeRefreshToken(request.refreshToken());
-            log.info("User logged out successfully");
-            return new MessageResponse("Logged out successfully");
-        } catch (Exception e) {
-            log.error("Error during logout: {}", e.getMessage(), e);
-            throw e;
-        }
+        refreshTokenService.revokeRefreshToken(request.refreshToken());
+        return new MessageResponse("Logged out successfully");
     }
 }
