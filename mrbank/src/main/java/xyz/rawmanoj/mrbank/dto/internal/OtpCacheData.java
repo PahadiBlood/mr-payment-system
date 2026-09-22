@@ -1,10 +1,10 @@
 package xyz.rawmanoj.mrbank.dto.internal;
 
-import java.time.Instant;
-
+/**
+ * Cached OTP challenge. {@code otpHash} is an HMAC of the code, never the code itself.
+ */
 public record OtpCacheData(
         String email,
-        String otp,
-        Instant createdAt
+        String otpHash
 ) {
 }

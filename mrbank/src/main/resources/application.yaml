@@ -61,6 +61,8 @@ application:
   otp:
     max:
       attempts: ${OTP_MAX_ATTEMPTS:5}
+    # HMAC key for codes stored in Redis. Override this outside local development.
+    hmac-secret: ${OTP_HMAC_SECRET:local-dev-otp-hmac-secret-change-me}
 
 logging:
   level:

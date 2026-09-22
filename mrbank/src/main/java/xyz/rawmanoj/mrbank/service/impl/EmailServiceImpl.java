@@ -1,49 +1,80 @@
 package xyz.rawmanoj.mrbank.service.impl;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import xyz.rawmanoj.mrbank.service.EmailService;
-import lombok.extern.slf4j.Slf4j;
 
-@Service
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
+
 @Slf4j
+@Service
 public class EmailServiceImpl implements EmailService {
 
-    @Autowired
-    private JavaMailSender mailSender;
+    private final JavaMailSender mailSender;
+    private final String fromEmail;
+    private final String fromName;
 
-    @Value("${application.email.from}")
-    private String fromEmail;
+    /** Rejects a blank sender address or sender name. */
+    public EmailServiceImpl(
+            JavaMailSender mailSender,
+            @Value("${application.email.from}") String fromEmail,
+            @Value("${application.email.from-name}") String fromName
+    ) {
+        if (fromEmail == null || fromEmail.isBlank() || fromName == null || fromName.isBlank()) {
+            throw new IllegalArgumentException("application.email.from and application.email.from-name must be set");
+        }
+        this.mailSender = mailSender;
+        this.fromEmail = fromEmail;
+        this.fromName = fromName;
+    }
 
-    @Value("${application.email.from-name}")
-    private String fromName;
-
-    @Async
+    /** Emails the one-time code to the address. */
     @Override
     public void sendOtp(String email, String otp) {
         try {
-            // This is for testing purposes only; use a Thymeleaf template to send real emails.
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
+            helper.setFrom(fromEmail, fromName);
+            helper.setTo(email);
+            helper.setSubject("Your MR Bank OTP");
+            helper.setText("""
+                    Your One-Time Password (OTP) for MR Bank is: %s
 
-            log.info("Mail sent to email : {}", email);
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(fromEmail);
-            message.setTo(email);
-            message.setSubject("Your MR Bank OTP");
-            message.setText("Your One-Time Password (OTP) for MR Bank is: " + otp + "\n\n"
-                    + "This OTP is valid for 10 minutes.\n"
-                    + "Do not share this OTP with anyone.\n\n"
-                    + "If you didn't request this, please ignore this email.");
+                    This OTP is valid for 10 minutes.
+                    Do not share this OTP with anyone.
 
-            log.info("Sending OTP email to {} with otp {}", email, otp);
+                    If you didn't request this, please ignore this email.
+                    """.formatted(otp));
             mailSender.send(message);
-            log.info("OTP sent successfully to: {}", email);
-        } catch (Exception e) {
-            log.error("Failed to send OTP to: {}", email, e);
-            throw new RuntimeException("Failed to send OTP email", e);
+        } catch (MessagingException | UnsupportedEncodingException | MailException ex) {
+            // Some provider exceptions echo the message body. Keep the code out of the log.
+            log.error("Failed to send OTP email to {}: {}", email, safeFailureDetail(ex, otp));
+            throw new IllegalStateException("Failed to send OTP email", ex);
         }
+    }
+
+    /** Builds a log line that does not include the code. */
+    private static String safeFailureDetail(Throwable failure, String otp) {
+        Throwable current = failure;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && otp != null && message.contains(otp)) {
+                return failure.getClass().getSimpleName();
+            }
+            Throwable next = current.getCause();
+            current = next == current ? null : next;
+        }
+        String message = failure.getMessage();
+        if (message == null || message.isBlank()) {
+            return failure.getClass().getSimpleName();
+        }
+        return failure.getClass().getSimpleName() + ": " + message;
     }
 }
